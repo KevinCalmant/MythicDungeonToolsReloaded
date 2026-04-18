@@ -79,6 +79,12 @@
             </Layer>
 
             <Layer level="ARTWORK">
+                <Texture name="$parent_NextPullGlow" hidden="true" parentKey="texture_NextPullGlow"
+                    file="Interface\AddOns\MythicDungeonTools\Textures\Circle_White">
+                    <Anchors>
+                        <Anchor point="CENTER"/>
+                    </Anchors>
+                </Texture>
 
                 <Texture name="$parent_SelectedHighlight" hidden="true" parentKey="texture_SelectedHighlight" file="Interface\AddOns\MythicDungeonTools\Textures\UI-EncounterJournalTextures">
                     <TexCoords left="0.69" right="0.81" top="0.39" bottom="0.333"/>

@@ -2,6 +2,8 @@
 	<Script file='FramePools.lua'/>
 	<Include file='DungeonEnemies.xml'/>
 	<Script file='PullOutlines.lua'/>
+	<Script file='NextPull.lua'/>
+	<Script file='NextPullBeacon.lua'/>
 	<Script file='EnemyInfo.lua'/>
 	<Script file='Pointsofinterest.lua'/>
 	<Script file='Toolbar.lua'/>

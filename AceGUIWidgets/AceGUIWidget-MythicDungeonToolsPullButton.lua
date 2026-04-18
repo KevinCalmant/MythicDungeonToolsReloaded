@@ -937,6 +937,57 @@ local methods = {
     end
   end,
 
+  ---SetPullState
+  ---Sets the visual state indicator for next-pull tracking
+  ["SetPullState"] = function(self, state)
+    self.pullState = state
+    if not self.stateIcon then return end
+
+    if state == "completed" then
+      self.stateIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+      self.stateIcon:SetTexCoord(0, 1, 0, 1)
+      self.stateIcon:SetVertexColor(1, 1, 1, 1)
+      self.stateIcon:Show()
+      if self.stateIconAnimGroup then self.stateIconAnimGroup:Stop() end
+      self.background:SetDesaturated(true)
+    elseif state == "active" then
+      self.stateIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Waiting")
+      self.stateIcon:SetTexCoord(0, 1, 0, 1)
+      self.stateIcon:SetVertexColor(1, 0.8, 0, 1)
+      self.stateIcon:Show()
+      if not self.stateIconAnimGroup then
+        local ag = self.stateIcon:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        local fadeOut = ag:CreateAnimation("Alpha")
+        fadeOut:SetFromAlpha(1)
+        fadeOut:SetToAlpha(0.3)
+        fadeOut:SetDuration(0.6)
+        fadeOut:SetOrder(1)
+        fadeOut:SetSmoothing("IN_OUT")
+        local fadeIn = ag:CreateAnimation("Alpha")
+        fadeIn:SetFromAlpha(0.3)
+        fadeIn:SetToAlpha(1)
+        fadeIn:SetDuration(0.6)
+        fadeIn:SetOrder(2)
+        fadeIn:SetSmoothing("IN_OUT")
+        self.stateIconAnimGroup = ag
+      end
+      self.stateIconAnimGroup:Play()
+      self.background:SetDesaturated(false)
+    elseif state == "next" then
+      self.stateIcon:SetTexture("Interface\\MINIMAP\\MiniMap-VignetteArrow")
+      self.stateIcon:SetTexCoord(0, 1, 0, 1)
+      self.stateIcon:SetVertexColor(0, 1, 0.5, 1)
+      self.stateIcon:Show()
+      if self.stateIconAnimGroup then self.stateIconAnimGroup:Stop() end
+      self.background:SetDesaturated(false)
+    else
+      self.stateIcon:Hide()
+      if self.stateIconAnimGroup then self.stateIconAnimGroup:Stop() end
+      self.background:SetDesaturated(false)
+    end
+  end,
+
 }
 --Constructor
 local function Constructor()
@@ -972,6 +1023,12 @@ local function Constructor()
   pullNumber:SetHeight(14)
   pullNumber:SetJustifyH("CENTER");
   pullNumber:SetPoint("LEFT", button, "LEFT", 5, 0);
+
+  -- Next Pull state icon
+  local stateIcon = button:CreateTexture(nil, "OVERLAY", nil, 1)
+  stateIcon:SetSize(12, 12)
+  stateIcon:SetPoint("LEFT", pullNumber, "RIGHT", 2, 0)
+  stateIcon:Hide()
 
   button:SetScript("OnEnter", function()
 
@@ -1039,6 +1096,7 @@ local function Constructor()
     color = color,
     type = Type,
     countPerHealthFontString = countPerHealthFontString,
+    stateIcon = stateIcon,
   }
   for method, func in pairs(methods) do
     widget[method] = func

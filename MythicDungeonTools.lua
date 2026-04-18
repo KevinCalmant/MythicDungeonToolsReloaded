@@ -121,6 +121,9 @@ function SlashCmdList.MYTHICDUNGEONTOOLS(cmd, editbox)
     else
       MDT:HideMinimapButton()
     end
+  elseif rqst == "nextpull" then
+    local nextPullArgs = cmd:match("^nextpull%s*(.*)")
+    MDT:NextPull_SlashCommand(nextPullArgs or "")
   elseif rqst == "test" then
     MDT:OpenConfirmationFrame(450, 150, "MDT Test", "Run", "Run all tests?", MDT.test.RunAllTests)
   else
@@ -190,6 +193,27 @@ local defaultSavedVars = {
     selectedDungeonList = 1,
     knownAffixWeeks = {},
     prePatchWarningSeenFor = 0,
+    nextPull = {
+      enabled = true,
+      autoStartInKey = true,
+      dimUpcoming = 0,
+      highlightColor = { 0, 1, 0.5 },
+      beacon = {
+        enabled = true,
+        scale = 1.0,
+        anchorFrom = "TOP",
+        anchorTo = "TOP",
+        xoffset = 0,
+        yoffset = -50,
+        locked = false,
+        showForNonTank = false,
+        showUpcoming = true,
+        askOnStart = true, -- prompt non-tanks on CHALLENGE_MODE_START
+      },
+      sync = {
+        authority = "auto",
+      },
+    },
   },
 }
 do
@@ -3534,6 +3558,23 @@ function MDT:ReloadPullButtons(force)
     MDT:ColorAllPulls(nil, 0)
     MDT:DrawAllHulls(preset.value.pulls, force)
   end, "ReloadPullButtons", true)
+end
+
+---Updates pull button state icons based on NextPull tracking state
+function MDT:UpdatePullButtonStates()
+  local frame = self.main_frame and self.main_frame.sidePanel
+  if not frame or not frame.newPullButtons then return end
+  local isActive = self:NextPull_IsActive()
+  for idx, button in pairs(frame.newPullButtons) do
+    if button.SetPullState then
+      if isActive then
+        local pullState = self:NextPull_GetPullState(idx)
+        button:SetPullState(pullState)
+      else
+        button:SetPullState(nil)
+      end
+    end
+  end
 end
 
 ---Deselects all pull buttons

@@ -47,6 +47,7 @@ local defaultSizes = {
   ["texture_Portrait"] = 15,
   ["texture_MouseHighlight"] = 20,
   ["texture_SelectedHighlight"] = 20,
+  ["texture_NextPullGlow"] = 28,
   ["texture_Dragon"] = 26,
   ["texture_Indicator"] = 20,
   ["texture_PullIndicator"] = 23,
@@ -718,6 +719,10 @@ function MDT:DungeonEnemies_UpdateEnemiesAsync()
       end
     end
   end
+  -- Reapply next-pull glow after blips are recreated
+  if MDT:NextPull_IsActive() then
+    MDT:DungeonEnemies_UpdateNextPullGlow()
+  end
 end
 
 function MDT:DungeonEnemies_CreateFramePools()
@@ -889,6 +894,80 @@ function MDT:DungeonEnemies_UpdateSelected(pull, pulls, ignoreHulls)
     end
   end
   -- if not ignoreHulls then MDT:DrawAllHulls(pulls) end
+end
+
+---DungeonEnemies_UpdateNextPullGlow
+---Updates the pulsing glow on blips belonging to the "next" pull
+function MDT:DungeonEnemies_UpdateNextPullGlow()
+  if not db then db = MDT:GetDB() end
+  local state = MDT.nextPullState
+  local nextPullIdx = state and state.active and state.currentNextPull or nil
+  preset = MDT:GetCurrentPreset()
+  local pulls = preset and preset.value and preset.value.pulls
+
+  local dimAmount = db.nextPull and db.nextPull.dimUpcoming or 0
+  local dimAlpha = 1 - (dimAmount / 100)
+  local hr, hg, hb = 0, 1, 0.5
+  if db.nextPull and db.nextPull.highlightColor then
+    hr, hg, hb = db.nextPull.highlightColor[1] or 0, db.nextPull.highlightColor[2] or 1, db.nextPull.highlightColor[3] or 0.5
+  end
+
+  for _, blip in pairs(blips) do
+    local isInNextPull = false
+
+    if nextPullIdx and pulls and pulls[nextPullIdx] then
+      local p = pulls[nextPullIdx]
+      if p[blip.enemyIdx] then
+        for _, cloneIdx in pairs(p[blip.enemyIdx]) do
+          if cloneIdx == blip.cloneIdx then
+            isInNextPull = true
+            break
+          end
+        end
+      end
+    end
+
+    if isInNextPull then
+      blip.texture_NextPullGlow:SetDrawLayer("ARTWORK", -1)
+      blip.texture_NextPullGlow:SetBlendMode("ADD")
+      blip.texture_NextPullGlow:SetVertexColor(hr, hg, hb, 0.6)
+      blip.texture_NextPullGlow:Show()
+      -- Create pulse animation if not yet created
+      if not blip.nextPullAnimGroup then
+        local ag = blip.texture_NextPullGlow:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        local fadeOut = ag:CreateAnimation("Alpha")
+        fadeOut:SetFromAlpha(0.8)
+        fadeOut:SetToAlpha(0.25)
+        fadeOut:SetDuration(0.8)
+        fadeOut:SetOrder(1)
+        fadeOut:SetSmoothing("IN_OUT")
+        local fadeIn = ag:CreateAnimation("Alpha")
+        fadeIn:SetFromAlpha(0.25)
+        fadeIn:SetToAlpha(0.8)
+        fadeIn:SetDuration(0.8)
+        fadeIn:SetOrder(2)
+        fadeIn:SetSmoothing("IN_OUT")
+        blip.nextPullAnimGroup = ag
+      end
+      if not blip.nextPullAnimGroup:IsPlaying() then
+        blip.nextPullAnimGroup:Play()
+      end
+    else
+      blip.texture_NextPullGlow:Hide()
+      if blip.nextPullAnimGroup then
+        blip.nextPullAnimGroup:Stop()
+      end
+    end
+
+    -- Apply dimming for completed/upcoming pulls when tracking is active
+    if state and state.active and dimAmount > 0 and not isInNextPull then
+      local pullState = MDT:NextPull_GetPullState(MDT:FindPullOfBlip(blip) or 0)
+      if pullState == "completed" or pullState == "upcoming" then
+        blip.texture_Portrait:SetAlpha(dimAlpha)
+      end
+    end
+  end
 end
 
 ---DungeonEnemies_SetPullColor

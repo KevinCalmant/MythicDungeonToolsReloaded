@@ -141,17 +141,20 @@ function MDT:PullClickAreaOnEnter(pullIdx)
 end
 
 function MDT:PullClickAreaOnLeave()
+  local isTracking = MDT:NextPull_IsActive()
   for _, fsFrame in pairs(activeFontStrings) do
     local isCurrentPull = fsFrame.pullIdx == MDT:GetCurrentPull()
+    local isNextPull = isTracking and MDT:NextPull_GetPullState(fsFrame.pullIdx) == "next"
     fsFrame.fs:SetScale(1)
-    fsFrame.fs:SetAlpha(isCurrentPull and 1 or NONACTIVE_ALPHA)
+    fsFrame.fs:SetAlpha((isCurrentPull or isNextPull) and 1 or NONACTIVE_ALPHA)
   end
   for _, tex in pairs(activeTextures) do
     local isCurrentPull = tex.pullIdx == MDT:GetCurrentPull()
+    local isNextPull = isTracking and MDT:NextPull_GetPullState(tex.pullIdx) == "next"
     if tex.isCircle then
-      tex:SetAlpha(isCurrentPull and 1 or 0)
+      tex:SetAlpha((isCurrentPull or isNextPull) and 1 or 0)
     else
-      tex:SetAlpha(isCurrentPull and 1 or NONACTIVE_ALPHA)
+      tex:SetAlpha((isCurrentPull or isNextPull) and 1 or NONACTIVE_ALPHA)
     end
   end
 end
@@ -246,13 +249,60 @@ function MDT:DrawHullFontString(hull, pullIdx)
   if not center then return end
   local fsFrame = getFontString()
   fsFrame.pullIdx = pullIdx
-  if MDT:GetCurrentPull() == pullIdx then
-    fsFrame.fs:SetTextColor(1, 1, 1, 1)
+
+  local isCurrentPull = MDT:GetCurrentPull() == pullIdx
+  local nextPullState = MDT:NextPull_GetPullState(pullIdx)
+  local isNextPull = nextPullState == "next"
+  local isCompleted = nextPullState == "completed"
+  local isTracking = MDT:NextPull_IsActive()
+
+  -- Determine alpha based on pull state
+  local alpha
+  if isCurrentPull or isNextPull then
+    alpha = 1
+  elseif isTracking and (isCompleted or nextPullState == "upcoming") then
+    local db = MDT:GetDB()
+    local dimAmount = db.nextPull and db.nextPull.dimUpcoming or 0
+    alpha = dimAmount > 0 and (1 - dimAmount / 100) or NONACTIVE_ALPHA
   else
-    fsFrame.fs:SetTextColor(1, 1, 1, NONACTIVE_ALPHA)
+    alpha = NONACTIVE_ALPHA
   end
+
   fsFrame.fs:SetFontObject("GameFontNormal")
-  fsFrame.fs:SetFont(fsFrame.fs:GetFont(), 10, "OUTLINE", "")
+  if isNextPull then
+    -- Next pull: larger, green-tinted, pulsing
+    fsFrame.fs:SetFont(fsFrame.fs:GetFont(), 14, "OUTLINE", "")
+    fsFrame.fs:SetTextColor(0, 1, 0.5, 1)
+    -- Create or play pulse animation
+    if not fsFrame.nextPullAnimGroup then
+      local ag = fsFrame:CreateAnimationGroup()
+      ag:SetLooping("REPEAT")
+      local scaleUp = ag:CreateAnimation("Scale")
+      scaleUp:SetScaleFrom(1, 1)
+      scaleUp:SetScaleTo(1.3, 1.3)
+      scaleUp:SetDuration(0.6)
+      scaleUp:SetOrder(1)
+      scaleUp:SetSmoothing("IN_OUT")
+      local scaleDown = ag:CreateAnimation("Scale")
+      scaleDown:SetScaleFrom(1.3, 1.3)
+      scaleDown:SetScaleTo(1, 1)
+      scaleDown:SetDuration(0.6)
+      scaleDown:SetOrder(2)
+      scaleDown:SetSmoothing("IN_OUT")
+      fsFrame.nextPullAnimGroup = ag
+    end
+    if not fsFrame.nextPullAnimGroup:IsPlaying() then
+      fsFrame.nextPullAnimGroup:Play()
+    end
+  else
+    fsFrame.fs:SetFont(fsFrame.fs:GetFont(), 10, "OUTLINE", "")
+    fsFrame.fs:SetTextColor(1, 1, 1, alpha)
+    -- Stop pulse animation if it was playing
+    if fsFrame.nextPullAnimGroup then
+      fsFrame.nextPullAnimGroup:Stop()
+    end
+  end
+
   fsFrame.fs:SetText(pullIdx)
   fsFrame:ClearAllPoints()
   fsFrame:SetSize(40, 40)
@@ -294,8 +344,33 @@ end
 
 function MDT:DrawHull(vertices, pullColor, pullIdx)
   local isCurrent = MDT:GetCurrentPull() == pullIdx
-  local sizeMultiplier = 0.8
-  local alpha = isCurrent and 1 or NONACTIVE_ALPHA
+  local nextPullState = MDT:NextPull_GetPullState(pullIdx)
+  local isNextPull = nextPullState == "next"
+  local isTracking = MDT:NextPull_IsActive()
+
+  local sizeMultiplier = isNextPull and 1.0 or 0.8
+  local alpha
+  if isCurrent or isNextPull then
+    alpha = 1
+  elseif isTracking and (nextPullState == "completed" or nextPullState == "upcoming") then
+    local db = MDT:GetDB()
+    local dimAmount = db.nextPull and db.nextPull.dimUpcoming or 0
+    alpha = dimAmount > 0 and (1 - dimAmount / 100) or NONACTIVE_ALPHA
+  else
+    alpha = NONACTIVE_ALPHA
+  end
+
+  -- Brighten the next pull's color
+  local color = pullColor
+  if isNextPull then
+    color = {
+      r = math.min(1, pullColor.r * 0.5 + 0.5 * 0),
+      g = math.min(1, pullColor.g * 0.5 + 0.5 * 1),
+      b = math.min(1, pullColor.b * 0.5 + 0.5 * 0.5),
+      a = 1,
+    }
+  end
+
   local hull = convex_hull(vertices)
   if hull then
     -- expand_polygon: higher value = more points = more expensive = smoother outlines
@@ -308,7 +383,7 @@ function MDT:DrawHull(vertices, pullColor, pullIdx)
       if i ~= #hull then b = hull[i + 1] end
       --layerSublevel go from -8 to 7
       --we rotate through the layerSublevel to avoid collisions
-      MDT:DrawHullLine(a[1], a[2], b[1], b[2], sizeMultiplier * 3 * (MDT.scaleMultiplier[MDT:GetDB().currentDungeonIdx] or 1), pullColor, alpha,
+      MDT:DrawHullLine(a[1], a[2], b[1], b[2], sizeMultiplier * 3 * (MDT.scaleMultiplier[MDT:GetDB().currentDungeonIdx] or 1), color, alpha,
         true, "ARTWORK", pullIdx % 16 - 8, 1, pullIdx)
     end
   end
